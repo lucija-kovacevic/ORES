@@ -1,0 +1,105 @@
+Sets
+    t /t1*t24/
+    i /A, B, C, D/
+    b /1*3/;
+
+Alias (b,bb);
+
+Table raw(t, *)
+$ondelim
+$include market_input_with_bids.csv
+$offdelim
+
+* Parameters
+Parameters
+    price(i,b,t)
+    capacity(i,b,t)
+    cost(i,t)
+    demand(t);
+
+* Manual column mapping
+price('A','1',t) = raw(t, 'A_price1'); capacity('A','1',t) = raw(t, 'A_cap1');
+price('A','2',t) = raw(t, 'A_price2'); capacity('A','2',t) = raw(t, 'A_cap2');
+price('A','3',t) = raw(t, 'A_price3'); capacity('A','3',t) = raw(t, 'A_cap3'); cost('A',t) = raw(t, 'A_cost');
+
+price('B','1',t) = raw(t, 'B_price1'); capacity('B','1',t) = raw(t, 'B_cap1');
+price('B','2',t) = raw(t, 'B_price2'); capacity('B','2',t) = raw(t, 'B_cap2');
+price('B','3',t) = raw(t, 'B_price3'); capacity('B','3',t) = raw(t, 'B_cap3'); cost('B',t) = raw(t, 'B_cost');
+
+price('C','1',t) = raw(t, 'C_price1'); capacity('C','1',t) = raw(t, 'C_cap1');
+price('C','2',t) = raw(t, 'C_price2'); capacity('C','2',t) = raw(t, 'C_cap2');
+price('C','3',t) = raw(t, 'C_price3'); capacity('C','3',t) = raw(t, 'C_cap3'); cost('C',t) = raw(t, 'C_cost');
+
+price('D','1',t) = raw(t, 'D_price1'); capacity('D','1',t) = raw(t, 'D_cap1');
+price('D','2',t) = raw(t, 'D_price2'); capacity('D','2',t) = raw(t, 'D_cap2');
+price('D','3',t) = raw(t, 'D_price3'); capacity('D','3',t) = raw(t, 'D_cap3'); cost('D',t) = raw(t, 'D_cost');
+
+demand(t) = raw(t, 'demand');
+
+* Variables
+Positive Variables
+    gen(i,b,t);
+
+Variable total_cost;
+
+* Equations
+Equations
+    obj, balance(t), cap_limit(i,b,t);
+
+obj..
+    total_cost =e= sum((i,b,t), gen(i,b,t) * price(i,b,t));
+
+balance(t)..
+    sum((i,b), gen(i,b,t)) =e= demand(t);
+
+cap_limit(i,b,t)..
+    gen(i,b,t) =l= capacity(i,b,t);
+
+Model market /all/;
+Solve market using LP minimizing total_cost;
+
+* === REZULTATI: ANALIZA PO ELEKTRANI I PO SATU ===
+
+Parameters
+    gen_sum(i,t)         "Ukupna proizvodnja po elektrani i satu"
+    mcp(t)               "Marginalni trošak (dual balans jednadžbe)"
+    revenue(i,t)         "Prihod po satu"
+    operational_cost(i,t) "Operativni trošak po satu"
+    total_cost_i(i)      "Ukupan operativni trošak"
+    total_rev_i(i)       "Ukupan prihod"
+    total_profit(i)      "Ukupan profit"
+    energy_total(i)      "Ukupna prodana energija po elektrani"
+    hourly_summary(t,*)  "Vrijeme, A–D, demand, marginalni trošak";
+
+* Sumiraj proizvodnju po elektrani (suma kroz sve bidove)
+gen_sum(i,t) = sum(b, gen.l(i,b,t));
+
+* MCP = dual balans jednadžbe
+mcp(t) = balance.m(t);
+
+* Prihodi i troškovi po satu
+revenue(i,t)         = mcp(t) * gen_sum(i,t);
+operational_cost(i,t)= cost(i,t) * gen_sum(i,t); 
+
+* Ukupni rezultati po elektrani
+total_rev_i(i)     = sum(t, revenue(i,t));
+total_cost_i(i)    = sum(t, operational_cost(i,t));
+total_profit(i)    = total_rev_i(i) - total_cost_i(i);
+energy_total(i)    = sum(t, gen_sum(i,t));
+
+* === PO SATU: sheet za analizu po satu ===
+hourly_summary(t,'Hour')     = ord(t);
+hourly_summary(t,'A_MWh')    = gen_sum('A',t);
+hourly_summary(t,'B_MWh')    = gen_sum('B',t);
+hourly_summary(t,'C_MWh')    = gen_sum('C',t);
+hourly_summary(t,'D_MWh')    = gen_sum('D',t);
+hourly_summary(t,'Demand')   = demand(t);
+hourly_summary(t,'MCP_EUR')  = mcp(t);
+
+display total_profit, energy_total, total_rev_i, total_cost_i;
+
+* === IZVOZ U EXCEL ===
+execute_unload "results.gdx", total_profit, energy_total, hourly_summary;
+
+* Dodaj tekstualna zaglavlja u Summary sheet
+execute 'gdxxrw.exe results.gdx output=results.xlsx par=total_profit rng=Summary!B2 par=energy_total rng=Summary!D2 par=hourly_summary rng=Hourly!A2';
